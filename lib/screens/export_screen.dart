@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import '../providers/theme_provider.dart';
+import '../models/account_model.dart';
+import '../models/category_model.dart';
 import '../database/database_helper.dart';
 import '../utils/app_utils.dart';
 import '../theme/app_theme.dart';
@@ -17,8 +19,8 @@ class ExportScreen extends StatefulWidget {
 class _ExportScreenState extends State<ExportScreen> {
   bool _exporting = false;
   String? _lastExportPath;
-
   String _selectedPeriod = 'month';
+
   final List<Map<String, String>> _periods = [
     {'key': 'today', 'label': 'Bugun'},
     {'key': 'week', 'label': 'Bu hafta'},
@@ -26,28 +28,30 @@ class _ExportScreenState extends State<ExportScreen> {
     {'key': 'all', 'label': 'Hammasi'},
   ];
 
+  Future<Map<String, String>> _getDateRange() async {
+    final now = DateTime.now();
+    String from, to;
+    if (_selectedPeriod == 'today') {
+      from = to = AppUtils.dateString(now);
+    } else if (_selectedPeriod == 'week') {
+      final r = AppUtils.getWeekRange();
+      from = r[0]; to = r[1];
+    } else if (_selectedPeriod == 'month') {
+      final r = AppUtils.getMonthRange();
+      from = r[0]; to = r[1];
+    } else {
+      from = '2020-01-01';
+      to = AppUtils.dateString(now);
+    }
+    return {'from': from, 'to': to};
+  }
+
   Future<void> _exportCSV() async {
     setState(() => _exporting = true);
-
     try {
-      String from, to;
-      final now = DateTime.now();
-
-      if (_selectedPeriod == 'today') {
-        from = to = AppUtils.dateString(now);
-      } else if (_selectedPeriod == 'week') {
-        final range = AppUtils.getWeekRange();
-        from = range[0]; to = range[1];
-      } else if (_selectedPeriod == 'month') {
-        final range = AppUtils.getMonthRange();
-        from = range[0]; to = range[1];
-      } else {
-        from = '2020-01-01';
-        to = AppUtils.dateString(now);
-      }
-
+      final range = await _getDateRange();
       final transactions = await DatabaseHelper.instance
-          .getTransactionsByDateRange(from, to);
+          .getTransactionsByDateRange(range['from']!, range['to']!);
       final accounts = await DatabaseHelper.instance.getAccounts();
       final categories = await DatabaseHelper.instance.getCategories();
 
@@ -55,18 +59,20 @@ class _ExportScreenState extends State<ExportScreen> {
       buffer.writeln('Sana,Tur,Summa,Hisob,Kategoriya,Izoh');
 
       for (final txn in transactions) {
-        final account = txn.type == 'kirim'
-            ? accounts.firstWhere((a) => a.id == txn.accountTo,
-                orElse: () =>
-                    AccountModelHelper(name: '', balance: 0, type: ''))
-            : accounts.firstWhere((a) => a.id == txn.accountFrom,
-                orElse: () =>
-                    AccountModelHelper(name: '', balance: 0, type: ''));
+        AccountModel? account;
+        try {
+          account = txn.type == 'kirim'
+              ? accounts.firstWhere((a) => a.id == txn.accountTo)
+              : accounts.firstWhere((a) => a.id == txn.accountFrom);
+        } catch (_) {}
 
-        final category = txn.categoryId != null
-            ? categories.firstWhere((c) => c.id == txn.categoryId,
-                orElse: () => CategoryModelHelper(name: '', type: ''))
-            : CategoryModelHelper(name: '', type: '');
+        CategoryModel? category;
+        try {
+          if (txn.categoryId != null) {
+            category =
+                categories.firstWhere((c) => c.id == txn.categoryId);
+          }
+        } catch (_) {}
 
         final typeLabel = txn.type == 'kirim'
             ? 'Kirim'
@@ -76,7 +82,9 @@ class _ExportScreenState extends State<ExportScreen> {
 
         buffer.writeln(
           '${txn.date},$typeLabel,${txn.amount.toStringAsFixed(0)},'
-          '${account.name},${category.name},${txn.note ?? ''}',
+          '${account?.name ?? ''},'
+          '${category?.name ?? ''},'
+          '${txn.note ?? ''}',
         );
       }
 
@@ -93,58 +101,39 @@ class _ExportScreenState extends State<ExportScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fayl saqlandi: $fileName'),
-            backgroundColor: AppTheme.primaryGreen,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Saqlandi: $fileName'),
+          backgroundColor: AppTheme.primaryGreen,
+        ));
       }
     } catch (e) {
       setState(() => _exporting = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Xato: $e'),
-            backgroundColor: const Color(0xFFFF4757),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Xato: $e'),
+          backgroundColor: const Color(0xFFFF4757),
+        ));
       }
     }
   }
 
   Future<void> _exportTXT() async {
     setState(() => _exporting = true);
-
     try {
-      String from, to;
+      final range = await _getDateRange();
       final now = DateTime.now();
-
-      if (_selectedPeriod == 'today') {
-        from = to = AppUtils.dateString(now);
-      } else if (_selectedPeriod == 'week') {
-        final range = AppUtils.getWeekRange();
-        from = range[0]; to = range[1];
-      } else if (_selectedPeriod == 'month') {
-        final range = AppUtils.getMonthRange();
-        from = range[0]; to = range[1];
-      } else {
-        from = '2020-01-01';
-        to = AppUtils.dateString(now);
-      }
-
       final transactions = await DatabaseHelper.instance
-          .getTransactionsByDateRange(from, to);
+          .getTransactionsByDateRange(range['from']!, range['to']!);
       final accounts = await DatabaseHelper.instance.getAccounts();
       final categories = await DatabaseHelper.instance.getCategories();
-      final summary = await DatabaseHelper.instance.getRangeSummary(from, to);
+      final summary = await DatabaseHelper.instance
+          .getRangeSummary(range['from']!, range['to']!);
 
       final buffer = StringBuffer();
       buffer.writeln('=' * 40);
       buffer.writeln('       MONEY TRACKER HISOBOTI');
       buffer.writeln('=' * 40);
-      buffer.writeln('Davr: $from — $to');
+      buffer.writeln('Davr: ${range['from']} — ${range['to']}');
       buffer.writeln('Sana: ${AppUtils.dateString(now)}');
       buffer.writeln('-' * 40);
       buffer.writeln(
@@ -164,29 +153,31 @@ class _ExportScreenState extends State<ExportScreen> {
           lastDate = txn.date;
         }
 
-        final account = txn.type == 'kirim'
-            ? accounts.firstWhere((a) => a.id == txn.accountTo,
-                orElse: () =>
-                    AccountModelHelper(name: '?', balance: 0, type: ''))
-            : accounts.firstWhere((a) => a.id == txn.accountFrom,
-                orElse: () =>
-                    AccountModelHelper(name: '?', balance: 0, type: ''));
+        AccountModel? account;
+        try {
+          account = txn.type == 'kirim'
+              ? accounts.firstWhere((a) => a.id == txn.accountTo)
+              : accounts.firstWhere((a) => a.id == txn.accountFrom);
+        } catch (_) {}
 
-        final category = txn.categoryId != null
-            ? categories.firstWhere((c) => c.id == txn.categoryId,
-                orElse: () => CategoryModelHelper(name: '?', type: ''))
-            : CategoryModelHelper(name: '—', type: '');
+        CategoryModel? category;
+        try {
+          if (txn.categoryId != null) {
+            category =
+                categories.firstWhere((c) => c.id == txn.categoryId);
+          }
+        } catch (_) {}
 
         final sign = txn.type == 'kirim' ? '+' : '-';
         buffer.writeln(
           '  $sign${AppUtils.formatAmount(txn.amount)} som'
-          '  [${account.name}]'
-          '  ${category.name}'
+          '  [${account?.name ?? '?'}]'
+          '  ${category?.name ?? '—'}'
           '${txn.note != null ? '  (${txn.note})' : ''}',
         );
       }
 
-      buffer.writeln('\n' + '=' * 40);
+      buffer.writeln('\n${'=' * 40}');
       buffer.writeln('HISOBLAR:');
       for (final acc in accounts) {
         buffer.writeln(
@@ -207,23 +198,18 @@ class _ExportScreenState extends State<ExportScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fayl saqlandi: $fileName'),
-            backgroundColor: AppTheme.primaryGreen,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Saqlandi: $fileName'),
+          backgroundColor: AppTheme.primaryGreen,
+        ));
       }
     } catch (e) {
       setState(() => _exporting = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Xato: $e'),
-            backgroundColor: const Color(0xFFFF4757),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Xato: $e'),
+          backgroundColor: const Color(0xFFFF4757),
+        ));
       }
     }
   }
@@ -249,7 +235,6 @@ class _ExportScreenState extends State<ExportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Davr tanlash
             Text('Davr tanlang',
                 style: TextStyle(
                     color: isDark
@@ -273,9 +258,7 @@ class _ExportScreenState extends State<ExportScreen> {
                       decoration: BoxDecoration(
                         color: isSelected
                             ? AppTheme.primaryGreen.withOpacity(0.15)
-                            : (isDark
-                                ? const Color(0xFF131929)
-                                : Colors.white),
+                            : cardBg,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                             color: isSelected
@@ -300,8 +283,6 @@ class _ExportScreenState extends State<ExportScreen> {
               }).toList(),
             ),
             const SizedBox(height: 24),
-
-            // Export tugmalari
             Text('Format tanlang',
                 style: TextStyle(
                     color: isDark
@@ -311,7 +292,6 @@ class _ExportScreenState extends State<ExportScreen> {
                     fontWeight: FontWeight.w600,
                     letterSpacing: 1)),
             const SizedBox(height: 10),
-
             _ExportButton(
               icon: Icons.table_chart_rounded,
               title: 'CSV fayl',
@@ -331,7 +311,6 @@ class _ExportScreenState extends State<ExportScreen> {
               loading: _exporting,
               onTap: _exportTXT,
             ),
-
             if (_lastExportPath != null) ...[
               const SizedBox(height: 24),
               Container(
@@ -371,14 +350,11 @@ class _ExportScreenState extends State<ExportScreen> {
                 ),
               ),
             ],
-
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF131929)
-                    : const Color(0xFFF8FAFC),
+                color: cardBg,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -389,8 +365,7 @@ class _ExportScreenState extends State<ExportScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Fayllar telefoningizning "Downloads" yoki '
-                      '"Android/data" papkasiga saqlanadi. '
+                      'Fayllar telefoningizning xotirasiga saqlanadi. '
                       'CSV faylni Excel yoki Google Sheets da ochish mumkin.',
                       style: TextStyle(
                           color: isDark
@@ -458,7 +433,9 @@ class _ExportButton extends StatelessWidget {
                 children: [
                   Text(title,
                       style: TextStyle(
-                          color: isDark ? Colors.white : const Color(0xFF1A2332),
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF1A2332),
                           fontWeight: FontWeight.w700,
                           fontSize: 15)),
                   Text(subtitle,
@@ -482,19 +459,4 @@ class _ExportButton extends StatelessWidget {
       ),
     );
   }
-}
-
-// Helper classes for orElse
-class AccountModelHelper {
-  final String name;
-  final double balance;
-  final String type;
-  AccountModelHelper(
-      {required this.name, required this.balance, required this.type});
-}
-
-class CategoryModelHelper {
-  final String name;
-  final String type;
-  CategoryModelHelper({required this.name, required this.type});
 }
