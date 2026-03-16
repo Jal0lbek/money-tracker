@@ -100,7 +100,7 @@ class SettingsScreen extends StatelessWidget {
                   icon: Icons.code_rounded,
                   iconColor: AppTheme.primaryGreen,
                   title: 'Ishlab chiquvchi',
-                  subtitle: 'Flutter Developer',
+                  subtitle: 'Jalolbek Karimov',
                   isDark: isDark,
                 ),
               ],
