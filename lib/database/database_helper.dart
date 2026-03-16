@@ -7,6 +7,7 @@ import '../models/debt_model.dart';
 import '../models/reminder_model.dart';
 import '../models/budget_model.dart';
 import '../models/recurring_model.dart';
+import '../utils/app_utils.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
