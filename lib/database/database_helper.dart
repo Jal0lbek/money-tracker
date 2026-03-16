@@ -1,5 +1,4 @@
 import 'package:sqflite/sqflite.dart';
-import 'package:sqflite/sqlite_api.dart';
 import 'package:path/path.dart';
 import '../models/account_model.dart';
 import '../models/transaction_model.dart';
@@ -23,15 +22,12 @@ class DatabaseHelper {
       path,
       version: 1,
       onCreate: _createTables,
-      onOpen: (db) async {
-        await _seedDefaultData(db);
-      },
     );
   }
 
   Future<void> _createTables(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE accounts (
+      CREATE TABLE IF NOT EXISTS accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         balance REAL NOT NULL DEFAULT 0,
@@ -43,7 +39,7 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE transactions (
+      CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
         amount REAL NOT NULL,
@@ -57,7 +53,7 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE categories (
+      CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
@@ -67,7 +63,7 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE settings (
+      CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       )
@@ -77,19 +73,16 @@ class DatabaseHelper {
   }
 
   Future<void> _seedDefaultData(Database db) async {
-    // Check if accounts already exist
     final accounts = await db.query('accounts');
     if (accounts.isEmpty) {
-      // Default accounts
-      await db.insert('accounts', {'name': 'Naqd', 'balance': 0, 'type': 'naqd', 'currency': 'UZS', 'icon': 'cash', 'color': '#4CAF50'});
-      await db.insert('accounts', {'name': 'Karta', 'balance': 0, 'type': 'karta', 'currency': 'UZS', 'icon': 'card', 'color': '#2196F3'});
-      await db.insert('accounts', {'name': 'Bank', 'balance': 0, 'type': 'bank', 'currency': 'UZS', 'icon': 'bank', 'color': '#9C27B0'});
-      await db.insert('accounts', {'name': 'Valyuta', 'balance': 0, 'type': 'valyuta', 'currency': 'USD', 'icon': 'currency', 'color': '#FF9800'});
+      await db.insert('accounts', {'name': 'Naqd', 'balance': 0.0, 'type': 'naqd', 'currency': 'UZS', 'icon': 'cash', 'color': '#4CAF50'});
+      await db.insert('accounts', {'name': 'Karta', 'balance': 0.0, 'type': 'karta', 'currency': 'UZS', 'icon': 'card', 'color': '#2196F3'});
+      await db.insert('accounts', {'name': 'Bank', 'balance': 0.0, 'type': 'bank', 'currency': 'UZS', 'icon': 'bank', 'color': '#9C27B0'});
+      await db.insert('accounts', {'name': 'Valyuta', 'balance': 0.0, 'type': 'valyuta', 'currency': 'USD', 'icon': 'currency', 'color': '#FF9800'});
     }
 
     final categories = await db.query('categories');
     if (categories.isEmpty) {
-      // Expense categories
       final expenseCategories = [
         {'name': 'Benzin', 'type': 'chiqim', 'icon': 'gas', 'color': '#F44336'},
         {'name': 'Ovqat', 'type': 'chiqim', 'icon': 'food', 'color': '#FF9800'},
@@ -106,7 +99,6 @@ class DatabaseHelper {
         await db.insert('categories', cat);
       }
 
-      // Income categories
       final incomeCategories = [
         {'name': 'Ish haqi', 'type': 'kirim', 'icon': 'salary', 'color': '#4CAF50'},
         {'name': 'Savdo', 'type': 'kirim', 'icon': 'trade', 'color': '#2196F3'},
@@ -148,45 +140,44 @@ class DatabaseHelper {
   Future<double> getTotalBalance() async {
     final db = await database;
     final result = await db.rawQuery('SELECT SUM(balance) as total FROM accounts WHERE type != "valyuta"');
-    return (result.first['total'] as num?)?.toDouble() ?? 0;
+    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   // TRANSACTIONS
   Future<int> insertTransaction(TransactionModel txn) async {
     final db = await database;
 
-    await db.transaction((txnDb) async {
-      await txnDb.insert('transactions', txn.toMap());
-
-      if (txn.type == 'kirim' && txn.accountTo != null) {
-        final acc = await getAccount(txn.accountTo!);
-        if (acc != null) {
-          await txnDb.update('accounts', {'balance': acc.balance + txn.amount},
-              where: 'id = ?', whereArgs: [acc.id]);
-        }
-      } else if (txn.type == 'chiqim' && txn.accountFrom != null) {
-        final acc = await getAccount(txn.accountFrom!);
-        if (acc != null) {
-          await txnDb.update('accounts', {'balance': acc.balance - txn.amount},
-              where: 'id = ?', whereArgs: [acc.id]);
-        }
-      } else if (txn.type == 'otkazma') {
-        if (txn.accountFrom != null) {
-          final accFrom = await getAccount(txn.accountFrom!);
-          if (accFrom != null) {
-            await txnDb.update('accounts', {'balance': accFrom.balance - txn.amount},
-                where: 'id = ?', whereArgs: [accFrom.id]);
-          }
-        }
-        if (txn.accountTo != null) {
-          final accTo = await getAccount(txn.accountTo!);
-          if (accTo != null) {
-            await txnDb.update('accounts', {'balance': accTo.balance + txn.amount},
-                where: 'id = ?', whereArgs: [accTo.id]);
-          }
+    if (txn.type == 'kirim' && txn.accountTo != null) {
+      final acc = await getAccount(txn.accountTo!);
+      if (acc != null) {
+        await db.insert('transactions', txn.toMap());
+        await db.update('accounts', {'balance': acc.balance + txn.amount},
+            where: 'id = ?', whereArgs: [acc.id]);
+      }
+    } else if (txn.type == 'chiqim' && txn.accountFrom != null) {
+      final acc = await getAccount(txn.accountFrom!);
+      if (acc != null) {
+        await db.insert('transactions', txn.toMap());
+        await db.update('accounts', {'balance': acc.balance - txn.amount},
+            where: 'id = ?', whereArgs: [acc.id]);
+      }
+    } else if (txn.type == 'otkazma') {
+      await db.insert('transactions', txn.toMap());
+      if (txn.accountFrom != null) {
+        final accFrom = await getAccount(txn.accountFrom!);
+        if (accFrom != null) {
+          await db.update('accounts', {'balance': accFrom.balance - txn.amount},
+              where: 'id = ?', whereArgs: [accFrom.id]);
         }
       }
-    });
+      if (txn.accountTo != null) {
+        final accTo = await getAccount(txn.accountTo!);
+        if (accTo != null) {
+          await db.update('accounts', {'balance': accTo.balance + txn.amount},
+              where: 'id = ?', whereArgs: [accTo.id]);
+        }
+      }
+    }
 
     return 0;
   }
@@ -223,8 +214,8 @@ class DatabaseHelper {
     final expense = await db.rawQuery(
         'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "chiqim" AND date = ?', [date]);
     return {
-      'kirim': (income.first['total'] as num?)?.toDouble() ?? 0,
-      'chiqim': (expense.first['total'] as num?)?.toDouble() ?? 0,
+      'kirim': (income.first['total'] as num?)?.toDouble() ?? 0.0,
+      'chiqim': (expense.first['total'] as num?)?.toDouble() ?? 0.0,
     };
   }
 
@@ -235,8 +226,8 @@ class DatabaseHelper {
     final expense = await db.rawQuery(
         'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "chiqim" AND date >= ? AND date <= ?', [from, to]);
     return {
-      'kirim': (income.first['total'] as num?)?.toDouble() ?? 0,
-      'chiqim': (expense.first['total'] as num?)?.toDouble() ?? 0,
+      'kirim': (income.first['total'] as num?)?.toDouble() ?? 0.0,
+      'chiqim': (expense.first['total'] as num?)?.toDouble() ?? 0.0,
     };
   }
 
@@ -254,22 +245,25 @@ class DatabaseHelper {
 
   Future<void> deleteTransaction(int id) async {
     final db = await database;
-    // Get transaction first to reverse balance
     final maps = await db.query('transactions', where: 'id = ?', whereArgs: [id]);
     if (maps.isEmpty) return;
     final txn = TransactionModel.fromMap(maps.first);
 
-    await db.transaction((txnDb) async {
-      await txnDb.delete('transactions', where: 'id = ?', whereArgs: [id]);
-      // Reverse the balance change
-      if (txn.type == 'kirim' && txn.accountTo != null) {
-        final acc = await getAccount(txn.accountTo!);
-        if (acc != null) await txnDb.update('accounts', {'balance': acc.balance - txn.amount}, where: 'id = ?', whereArgs: [acc.id]);
-      } else if (txn.type == 'chiqim' && txn.accountFrom != null) {
-        final acc = await getAccount(txn.accountFrom!);
-        if (acc != null) await txnDb.update('accounts', {'balance': acc.balance + txn.amount}, where: 'id = ?', whereArgs: [acc.id]);
+    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+
+    if (txn.type == 'kirim' && txn.accountTo != null) {
+      final acc = await getAccount(txn.accountTo!);
+      if (acc != null) {
+        await db.update('accounts', {'balance': acc.balance - txn.amount},
+            where: 'id = ?', whereArgs: [acc.id]);
       }
-    });
+    } else if (txn.type == 'chiqim' && txn.accountFrom != null) {
+      final acc = await getAccount(txn.accountFrom!);
+      if (acc != null) {
+        await db.update('accounts', {'balance': acc.balance + txn.amount},
+            where: 'id = ?', whereArgs: [acc.id]);
+      }
+    }
   }
 
   // CATEGORIES
@@ -293,7 +287,7 @@ class DatabaseHelper {
 
   Future<void> setSetting(String key, String value) async {
     final db = await database;
-    await db.insert('settings', {'key': key, 'value': value},
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.delete('settings', where: 'key = ?', whereArgs: [key]);
+    await db.insert('settings', {'key': key, 'value': value});
   }
 }
