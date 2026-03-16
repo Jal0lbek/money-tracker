@@ -527,36 +527,3 @@ class DatabaseHelper {
     }
   }
 }
-
-// ignore: non_constant_identifier_names
-AppUtils get AppUtils => _AppUtils();
-
-class _AppUtils {
-  String dateString(DateTime dt) =>
-      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-  String nowString() => DateTime.now().toIso8601String();
-  String formatAmount(double amount) {
-    return amount.toStringAsFixed(0).replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ');
-  }
-  String formatDate(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      return '${date.day}.${date.month.toString().padLeft(2, '0')}.${date.year}';
-    } catch (_) {
-      return dateStr;
-    }
-  }
-  List<String> getWeekRange() {
-    final now = DateTime.now();
-    final weekStart = now.subtract(Duration(days: now.weekday - 1));
-    final weekEnd = weekStart.add(const Duration(days: 6));
-    return [dateString(weekStart), dateString(weekEnd)];
-  }
-  List<String> getMonthRange() {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd = DateTime(now.year, now.month + 1, 0);
-    return [dateString(monthStart), dateString(monthEnd)];
-  }
-}
