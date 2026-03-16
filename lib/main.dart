@@ -9,6 +9,12 @@ import 'screens/history_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/pin_screen.dart';
+import 'screens/debt_screen.dart';
+import 'screens/reminder_screen.dart';
+import 'screens/budget_screen.dart';
+import 'screens/recurring_screen.dart';
+import 'screens/export_screen.dart';
+import 'database/database_helper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +23,9 @@ void main() async {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
+
+  // Takroriy to'lovlarni tekshirish
+  await DatabaseHelper.instance.checkAndRunRecurrings();
 
   runApp(
     MultiProvider(
@@ -35,7 +44,6 @@ class MoneyTrackerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = context.watch<ThemeProvider>().isDark;
-
     return MaterialApp(
       title: 'Money Tracker',
       debugShowCheckedModeBanner: false,
@@ -46,6 +54,11 @@ class MoneyTrackerApp extends StatelessWidget {
       routes: {
         '/settings': (_) => const SettingsScreen(),
         '/pin': (_) => const PinScreen(),
+        '/debts': (_) => const DebtScreen(),
+        '/reminders': (_) => const ReminderScreen(),
+        '/budget': (_) => const BudgetScreen(),
+        '/recurring': (_) => const RecurringScreen(),
+        '/export': (_) => const ExportScreen(),
       },
     );
   }
@@ -58,7 +71,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
+class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
   bool _pinVerified = false;
 
@@ -66,12 +79,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     HomeScreen(),
     HistoryScreen(),
     ReportScreen(),
+    MoreScreen(),
   ];
 
   @override
   void initState() {
     super.initState();
-    WidgetsBindingObserver;
     _checkPin();
   }
 
@@ -101,7 +114,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final isDark = context.watch<ThemeProvider>().isDark;
     final navBg = isDark ? const Color(0xFF131929) : Colors.white;
     final selectedColor = AppTheme.primaryGreen;
-    final unselectedColor = isDark ? const Color(0xFF4A5568) : const Color(0xFF9CA3AF);
+    final unselectedColor =
+        isDark ? const Color(0xFF4A5568) : const Color(0xFF9CA3AF);
 
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
@@ -110,7 +124,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           color: navBg,
           border: Border(
             top: BorderSide(
-              color: isDark ? const Color(0xFF1A2332) : const Color(0xFFE5E7EB),
+              color: isDark
+                  ? const Color(0xFF1A2332)
+                  : const Color(0xFFE5E7EB),
               width: 1,
             ),
           ),
@@ -145,6 +161,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   unselectedColor: unselectedColor,
                   onTap: () => setState(() => _currentIndex = 2),
                 ),
+                _NavItem(
+                  icon: Icons.grid_view_rounded,
+                  label: 'Boshqa',
+                  isSelected: _currentIndex == 3,
+                  selectedColor: selectedColor,
+                  unselectedColor: unselectedColor,
+                  onTap: () => setState(() => _currentIndex = 3),
+                ),
               ],
             ),
           ),
@@ -178,24 +202,172 @@ class _NavItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? selectedColor.withOpacity(0.12) : Colors.transparent,
+          color: isSelected
+              ? selectedColor.withOpacity(0.12)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isSelected ? selectedColor : unselectedColor, size: 24),
+            Icon(icon,
+                color: isSelected ? selectedColor : unselectedColor,
+                size: 24),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
                 color: isSelected ? selectedColor : unselectedColor,
                 fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight:
+                    isSelected ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// "Boshqa" tab ekrani
+class MoreScreen extends StatelessWidget {
+  const MoreScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = context.watch<ThemeProvider>().isDark;
+    final bg = isDark ? const Color(0xFF0A0E1A) : const Color(0xFFF0F4F8);
+
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        backgroundColor: isDark ? const Color(0xFF0A0E1A) : Colors.white,
+        title: const Text('BOSHQA'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _MoreItem(
+            icon: Icons.people_rounded,
+            iconColor: AppTheme.primaryGreen,
+            title: 'Qarzlar',
+            subtitle: 'Qarzdorlar va qarzlarim',
+            isDark: isDark,
+            onTap: () => Navigator.pushNamed(context, '/debts'),
+          ),
+          _MoreItem(
+            icon: Icons.notifications_rounded,
+            iconColor: AppTheme.kartaColor,
+            title: 'Eslatmalar',
+            subtitle: 'Rejalashtirilgan to\'lovlar',
+            isDark: isDark,
+            onTap: () => Navigator.pushNamed(context, '/reminders'),
+          ),
+          _MoreItem(
+            icon: Icons.account_balance_wallet_rounded,
+            iconColor: AppTheme.bankColor,
+            title: 'Byudjet',
+            subtitle: 'Kategoriya limitlari',
+            isDark: isDark,
+            onTap: () => Navigator.pushNamed(context, '/budget'),
+          ),
+          _MoreItem(
+            icon: Icons.repeat_rounded,
+            iconColor: AppTheme.valyutaColor,
+            title: 'Takroriy to\'lovlar',
+            subtitle: 'Avtomatik tranzaksiyalar',
+            isDark: isDark,
+            onTap: () => Navigator.pushNamed(context, '/recurring'),
+          ),
+          _MoreItem(
+            icon: Icons.download_rounded,
+            iconColor: const Color(0xFF00B894),
+            title: 'Eksport',
+            subtitle: 'CSV yoki TXT fayl yuklash',
+            isDark: isDark,
+            onTap: () => Navigator.pushNamed(context, '/export'),
+          ),
+          _MoreItem(
+            icon: Icons.settings_rounded,
+            iconColor: const Color(0xFF6B7280),
+            title: 'Sozlamalar',
+            subtitle: 'PIN, tema va boshqalar',
+            isDark: isDark,
+            onTap: () => Navigator.pushNamed(context, '/settings'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoreItem extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _MoreItem({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cardBg = isDark ? const Color(0xFF131929) : Colors.white;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF1A2332),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15)),
+                  Text(subtitle,
+                      style: TextStyle(
+                          color: isDark
+                              ? const Color(0xFF6B7280)
+                              : const Color(0xFF9CA3AF),
+                          fontSize: 12)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                color: isDark
+                    ? const Color(0xFF4A5568)
+                    : const Color(0xFFD1D5DB)),
           ],
         ),
       ),
