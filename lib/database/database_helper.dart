@@ -3,6 +3,10 @@ import 'package:path/path.dart';
 import '../models/account_model.dart';
 import '../models/transaction_model.dart';
 import '../models/category_model.dart';
+import '../models/debt_model.dart';
+import '../models/reminder_model.dart';
+import '../models/budget_model.dart';
+import '../models/recurring_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
@@ -20,9 +24,66 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'money_tracker.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createTables,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS debts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          person_name TEXT NOT NULL,
+          amount REAL NOT NULL,
+          paid_amount REAL NOT NULL DEFAULT 0,
+          note TEXT,
+          date TEXT NOT NULL,
+          due_date TEXT,
+          is_paid INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS reminders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          amount REAL NOT NULL,
+          type TEXT NOT NULL,
+          day_of_month INTEGER NOT NULL,
+          is_recurring INTEGER NOT NULL DEFAULT 1,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          note TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS budgets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          category_id INTEGER,
+          category_name TEXT NOT NULL,
+          limit_amount REAL NOT NULL,
+          spent_amount REAL NOT NULL DEFAULT 0,
+          month TEXT NOT NULL,
+          color TEXT
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS recurrings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          amount REAL NOT NULL,
+          type TEXT NOT NULL,
+          account_id INTEGER,
+          category_id INTEGER,
+          day_of_month INTEGER NOT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          last_executed TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+    }
   }
 
   Future<void> _createTables(Database db, int version) async {
@@ -37,7 +98,6 @@ class DatabaseHelper {
         color TEXT
       )
     ''');
-
     await db.execute('''
       CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +111,6 @@ class DatabaseHelper {
         created_at TEXT NOT NULL
       )
     ''');
-
     await db.execute('''
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,14 +120,63 @@ class DatabaseHelper {
         color TEXT
       )
     ''');
-
     await db.execute('''
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       )
     ''');
-
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS debts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        person_name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        paid_amount REAL NOT NULL DEFAULT 0,
+        note TEXT,
+        date TEXT NOT NULL,
+        due_date TEXT,
+        is_paid INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        amount REAL NOT NULL,
+        type TEXT NOT NULL,
+        day_of_month INTEGER NOT NULL,
+        is_recurring INTEGER NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        note TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS budgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category_id INTEGER,
+        category_name TEXT NOT NULL,
+        limit_amount REAL NOT NULL,
+        spent_amount REAL NOT NULL DEFAULT 0,
+        month TEXT NOT NULL,
+        color TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS recurrings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        amount REAL NOT NULL,
+        type TEXT NOT NULL,
+        account_id INTEGER,
+        category_id INTEGER,
+        day_of_month INTEGER NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        last_executed TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
     await _seedDefaultData(db);
   }
 
@@ -80,7 +188,6 @@ class DatabaseHelper {
       await db.insert('accounts', {'name': 'Bank', 'balance': 0.0, 'type': 'bank', 'currency': 'UZS', 'icon': 'bank', 'color': '#9C27B0'});
       await db.insert('accounts', {'name': 'Valyuta', 'balance': 0.0, 'type': 'valyuta', 'currency': 'USD', 'icon': 'currency', 'color': '#FF9800'});
     }
-
     final categories = await db.query('categories');
     if (categories.isEmpty) {
       final expenseCategories = [
@@ -98,7 +205,6 @@ class DatabaseHelper {
       for (var cat in expenseCategories) {
         await db.insert('categories', cat);
       }
-
       final incomeCategories = [
         {'name': 'Ish haqi', 'type': 'kirim', 'icon': 'salary', 'color': '#4CAF50'},
         {'name': 'Savdo', 'type': 'kirim', 'icon': 'trade', 'color': '#2196F3'},
@@ -113,7 +219,7 @@ class DatabaseHelper {
     }
   }
 
-  // ACCOUNTS
+  // ── ACCOUNTS ──
   Future<List<AccountModel>> getAccounts() async {
     final db = await database;
     final maps = await db.query('accounts');
@@ -127,26 +233,16 @@ class DatabaseHelper {
     return AccountModel.fromMap(maps.first);
   }
 
-  Future<int> insertAccount(AccountModel account) async {
-    final db = await database;
-    return await db.insert('accounts', account.toMap());
-  }
-
-  Future<void> updateAccountBalance(int id, double newBalance) async {
-    final db = await database;
-    await db.update('accounts', {'balance': newBalance}, where: 'id = ?', whereArgs: [id]);
-  }
-
   Future<double> getTotalBalance() async {
     final db = await database;
-    final result = await db.rawQuery('SELECT SUM(balance) as total FROM accounts WHERE type != "valyuta"');
+    final result = await db.rawQuery(
+        'SELECT SUM(balance) as total FROM accounts WHERE type != "valyuta"');
     return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
-  // TRANSACTIONS
+  // ── TRANSACTIONS ──
   Future<int> insertTransaction(TransactionModel txn) async {
     final db = await database;
-
     if (txn.type == 'kirim' && txn.accountTo != null) {
       final acc = await getAccount(txn.accountTo!);
       if (acc != null) {
@@ -178,7 +274,6 @@ class DatabaseHelper {
         }
       }
     }
-
     return 0;
   }
 
@@ -200,7 +295,8 @@ class DatabaseHelper {
 
   Future<List<TransactionModel>> getTodayTransactions() async {
     final today = DateTime.now();
-    final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     final db = await database;
     final maps = await db.query('transactions',
         where: 'date = ?', whereArgs: [dateStr], orderBy: 'created_at DESC');
@@ -210,9 +306,11 @@ class DatabaseHelper {
   Future<Map<String, double>> getDailySummary(String date) async {
     final db = await database;
     final income = await db.rawQuery(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "kirim" AND date = ?', [date]);
+        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "kirim" AND date = ?',
+        [date]);
     final expense = await db.rawQuery(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "chiqim" AND date = ?', [date]);
+        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "chiqim" AND date = ?',
+        [date]);
     return {
       'kirim': (income.first['total'] as num?)?.toDouble() ?? 0.0,
       'chiqim': (expense.first['total'] as num?)?.toDouble() ?? 0.0,
@@ -222,9 +320,11 @@ class DatabaseHelper {
   Future<Map<String, double>> getRangeSummary(String from, String to) async {
     final db = await database;
     final income = await db.rawQuery(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "kirim" AND date >= ? AND date <= ?', [from, to]);
+        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "kirim" AND date >= ? AND date <= ?',
+        [from, to]);
     final expense = await db.rawQuery(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "chiqim" AND date >= ? AND date <= ?', [from, to]);
+        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = "chiqim" AND date >= ? AND date <= ?',
+        [from, to]);
     return {
       'kirim': (income.first['total'] as num?)?.toDouble() ?? 0.0,
       'chiqim': (expense.first['total'] as num?)?.toDouble() ?? 0.0,
@@ -245,12 +345,11 @@ class DatabaseHelper {
 
   Future<void> deleteTransaction(int id) async {
     final db = await database;
-    final maps = await db.query('transactions', where: 'id = ?', whereArgs: [id]);
+    final maps =
+        await db.query('transactions', where: 'id = ?', whereArgs: [id]);
     if (maps.isEmpty) return;
     final txn = TransactionModel.fromMap(maps.first);
-
     await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
-
     if (txn.type == 'kirim' && txn.accountTo != null) {
       final acc = await getAccount(txn.accountTo!);
       if (acc != null) {
@@ -266,21 +365,23 @@ class DatabaseHelper {
     }
   }
 
-  // CATEGORIES
+  // ── CATEGORIES ──
   Future<List<CategoryModel>> getCategories({String? type}) async {
     final db = await database;
     if (type != null) {
-      final maps = await db.query('categories', where: 'type = ?', whereArgs: [type]);
+      final maps =
+          await db.query('categories', where: 'type = ?', whereArgs: [type]);
       return maps.map((m) => CategoryModel.fromMap(m)).toList();
     }
     final maps = await db.query('categories');
     return maps.map((m) => CategoryModel.fromMap(m)).toList();
   }
 
-  // SETTINGS
+  // ── SETTINGS ──
   Future<String?> getSetting(String key) async {
     final db = await database;
-    final maps = await db.query('settings', where: 'key = ?', whereArgs: [key]);
+    final maps =
+        await db.query('settings', where: 'key = ?', whereArgs: [key]);
     if (maps.isEmpty) return null;
     return maps.first['value'] as String;
   }
@@ -289,5 +390,173 @@ class DatabaseHelper {
     final db = await database;
     await db.delete('settings', where: 'key = ?', whereArgs: [key]);
     await db.insert('settings', {'key': key, 'value': value});
+  }
+
+  // ── DEBTS ──
+  Future<List<DebtModel>> getDebts() async {
+    final db = await database;
+    final maps = await db.query('debts', orderBy: 'date DESC');
+    return maps.map((m) => DebtModel.fromMap(m)).toList();
+  }
+
+  Future<void> insertDebt(DebtModel debt) async {
+    final db = await database;
+    await db.insert('debts', debt.toMap());
+  }
+
+  Future<void> updateDebtPayment(int id, double newPaidAmount) async {
+    final db = await database;
+    await db.update('debts', {'paid_amount': newPaidAmount},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> markDebtAsPaid(int id) async {
+    final db = await database;
+    await db.update('debts', {'is_paid': 1},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteDebt(int id) async {
+    final db = await database;
+    await db.delete('debts', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── REMINDERS ──
+  Future<List<ReminderModel>> getReminders() async {
+    final db = await database;
+    final maps = await db.query('reminders', orderBy: 'day_of_month ASC');
+    return maps.map((m) => ReminderModel.fromMap(m)).toList();
+  }
+
+  Future<void> insertReminder(ReminderModel reminder) async {
+    final db = await database;
+    await db.insert('reminders', reminder.toMap());
+  }
+
+  Future<void> toggleReminder(int id, bool isActive) async {
+    final db = await database;
+    await db.update('reminders', {'is_active': isActive ? 1 : 0},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteReminder(int id) async {
+    final db = await database;
+    await db.delete('reminders', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<ReminderModel>> getTodayReminders() async {
+    final db = await database;
+    final today = DateTime.now().day;
+    final maps = await db.query('reminders',
+        where: 'day_of_month = ? AND is_active = 1', whereArgs: [today]);
+    return maps.map((m) => ReminderModel.fromMap(m)).toList();
+  }
+
+  // ── BUDGETS ──
+  Future<List<BudgetModel>> getBudgets(String month) async {
+    final db = await database;
+    final maps = await db.query('budgets',
+        where: 'month = ?', whereArgs: [month]);
+    return maps.map((m) => BudgetModel.fromMap(m)).toList();
+  }
+
+  Future<void> insertBudget(BudgetModel budget) async {
+    final db = await database;
+    await db.insert('budgets', budget.toMap());
+  }
+
+  Future<void> updateBudgetSpent(int id, double spent) async {
+    final db = await database;
+    await db.update('budgets', {'spent_amount': spent},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteBudget(int id) async {
+    final db = await database;
+    await db.delete('budgets', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── RECURRINGS ──
+  Future<List<RecurringModel>> getRecurrings() async {
+    final db = await database;
+    final maps = await db.query('recurrings', orderBy: 'day_of_month ASC');
+    return maps.map((m) => RecurringModel.fromMap(m)).toList();
+  }
+
+  Future<void> insertRecurring(RecurringModel recurring) async {
+    final db = await database;
+    await db.insert('recurrings', recurring.toMap());
+  }
+
+  Future<void> toggleRecurring(int id, bool isActive) async {
+    final db = await database;
+    await db.update('recurrings', {'is_active': isActive ? 1 : 0},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteRecurring(int id) async {
+    final db = await database;
+    await db.delete('recurrings', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> checkAndRunRecurrings() async {
+    final db = await database;
+    final today = DateTime.now();
+    final todayDay = today.day;
+    final todayStr = AppUtils.dateString(today);
+
+    final maps = await db.query('recurrings',
+        where: 'day_of_month = ? AND is_active = 1', whereArgs: [todayDay]);
+    final recurrings = maps.map((m) => RecurringModel.fromMap(m)).toList();
+
+    for (final r in recurrings) {
+      if (r.lastExecuted == todayStr) continue;
+      final txn = TransactionModel(
+        type: r.type,
+        amount: r.amount,
+        accountFrom: r.type == 'chiqim' ? r.accountId : null,
+        accountTo: r.type == 'kirim' ? r.accountId : null,
+        categoryId: r.categoryId,
+        note: r.title,
+        date: todayStr,
+        createdAt: AppUtils.nowString(),
+      );
+      await insertTransaction(txn);
+      await db.update('recurrings', {'last_executed': todayStr},
+          where: 'id = ?', whereArgs: [r.id]);
+    }
+  }
+}
+
+// ignore: non_constant_identifier_names
+AppUtils get AppUtils => _AppUtils();
+
+class _AppUtils {
+  String dateString(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  String nowString() => DateTime.now().toIso8601String();
+  String formatAmount(double amount) {
+    return amount.toStringAsFixed(0).replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ');
+  }
+  String formatDate(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    } catch (_) {
+      return dateStr;
+    }
+  }
+  List<String> getWeekRange() {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    return [dateString(weekStart), dateString(weekEnd)];
+  }
+  List<String> getMonthRange() {
+    final now = DateTime.now();
+    final monthStart = DateTime(now.year, now.month, 1);
+    final monthEnd = DateTime(now.year, now.month + 1, 0);
+    return [dateString(monthStart), dateString(monthEnd)];
   }
 }
