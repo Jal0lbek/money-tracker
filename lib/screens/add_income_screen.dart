@@ -73,10 +73,21 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
       createdAt: AppUtils.nowString(),
     );
 
-    final success = await context.read<FinanceProvider>().addTransaction(txn);
-    setState(() => _isSaving = false);
+    try {
+      final success = await context.read<FinanceProvider>().addTransaction(txn);
+      setState(() => _isSaving = false);
 
-    if (success && mounted) {
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Xato: tranzaksiya saqlanmadi!'),
+            backgroundColor: Color(0xFFFF4757),
+          ),
+        );
+        return;
+      }
+
+      if (success && mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
