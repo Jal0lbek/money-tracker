@@ -25,13 +25,19 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'money_tracker.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 3) {
+      try {
+        await db.execute(
+            'ALTER TABLE transactions ADD COLUMN receipt_path TEXT');
+      } catch (_) {}
+    }
     if (oldVersion < 2) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS debts (
