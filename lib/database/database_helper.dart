@@ -106,6 +106,7 @@ class DatabaseHelper {
       )
     ''');
     await db.execute('''
+      await db.execute('''
       CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
@@ -115,9 +116,11 @@ class DatabaseHelper {
         category_id INTEGER,
         note TEXT,
         date TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        receipt_path TEXT
       )
     ''');
+    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
