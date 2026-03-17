@@ -1,6 +1,6 @@
 class TransactionModel {
   final int? id;
-  final String type; // kirim, chiqim, otkazma
+  final String type;
   final double amount;
   final int? accountFrom;
   final int? accountTo;
@@ -8,6 +8,7 @@ class TransactionModel {
   final String? note;
   final String date;
   final String createdAt;
+  final String? receiptPath;
 
   TransactionModel({
     this.id,
@@ -19,6 +20,7 @@ class TransactionModel {
     this.note,
     required this.date,
     required this.createdAt,
+    this.receiptPath,
   });
 
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
@@ -32,6 +34,7 @@ class TransactionModel {
       note: map['note'] as String?,
       date: map['date'] as String,
       createdAt: map['created_at'] as String,
+      receiptPath: map['receipt_path'] as String?,
     );
   }
 
@@ -46,6 +49,7 @@ class TransactionModel {
       'note': note,
       'date': date,
       'created_at': createdAt,
+      'receipt_path': receiptPath,
     };
   }
 }
