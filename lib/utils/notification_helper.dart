@@ -1,6 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
 
 class NotificationHelper {
   static final NotificationHelper instance = NotificationHelper._internal();
@@ -10,30 +10,19 @@ class NotificationHelper {
       FlutterLocalNotificationsPlugin();
 
   Future<void> initialize() async {
-    tz.initializeTimeZones();
+    tz_data.initializeTimeZones();
 
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher_foreground');
 
-    const initSettings =
-        InitializationSettings(android: androidSettings);
+    const initSettings = InitializationSettings(android: androidSettings);
 
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (details) {},
     );
-
-    await _requestPermissions();
   }
 
-  Future<void> _requestPermissions() async {
-    final android = _plugin.resolvePlatformSpecificImplementation
-        AndroidFlutterLocalNotificationsPlugin>();
-    await android?.requestNotificationsPermission();
-    await android?.requestExactAlarmsPermission();
-  }
-
-  // Bir martalik notification
   Future<void> showNotification({
     required int id,
     required String title,
@@ -52,7 +41,6 @@ class NotificationHelper {
     await _plugin.show(id, title, body, details);
   }
 
-  // Har oy muayyan kunda notification
   Future<void> scheduleMonthlyNotification({
     required int id,
     required String title,
@@ -82,7 +70,6 @@ class NotificationHelper {
       minute,
     );
 
-    // Agar shu oy o'tib ketgan bo'lsa — keyingi oyga
     if (scheduled.isBefore(now)) {
       scheduled = tz.TZDateTime(
         tz.local,
@@ -101,11 +88,12 @@ class NotificationHelper {
       scheduled,
       details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime,
     );
   }
 
-  // Bugungi eslatmalarni tekshirish va yuborish
   Future<void> checkAndSendTodayReminders(
       List<Map<String, dynamic>> reminders) async {
     final today = DateTime.now().day;
@@ -123,25 +111,13 @@ class NotificationHelper {
 
         await showNotification(
           id: reminder['id'] as int,
-          title: isIncome ? '💰 Kirim eslatmasi' : '💸 Chiqim eslatmasi',
-          body:
-              '${reminder['title']} — $amountStr so\'m bugun!',
+          title: isIncome ? 'Kirim eslatmasi' : 'Chiqim eslatmasi',
+          body: '${reminder['title']} — $amountStr so\'m bugun!',
         );
       }
     }
   }
 
-  // Barcha rejalashtirilgan notificationlarni o'chirish
-  Future<void> cancelAll() async {
-    await _plugin.cancelAll();
-  }
-
-  // Bitta notificationni o'chirish
-  Future<void> cancel(int id) async {
-    await _plugin.cancel(id);
-  }
-
-  // Reminder uchun oylik notification rejalashtirish
   Future<void> scheduleReminderNotification({
     required int id,
     required String title,
@@ -153,15 +129,24 @@ class NotificationHelper {
     final amountStr = amount
         .toStringAsFixed(0)
         .replaceAllMapped(
-            RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ');
+            RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+            (m) => '${m[1]} ');
 
     await scheduleMonthlyNotification(
       id: id,
-      title: isIncome ? '💰 Kirim eslatmasi' : '💸 Chiqim eslatmasi',
+      title: isIncome ? 'Kirim eslatmasi' : 'Chiqim eslatmasi',
       body: '$title — $amountStr so\'m',
       dayOfMonth: dayOfMonth,
       hour: 9,
       minute: 0,
     );
+  }
+
+  Future<void> cancelAll() async {
+    await _plugin.cancelAll();
+  }
+
+  Future<void> cancel(int id) async {
+    await _plugin.cancel(id);
   }
 }
