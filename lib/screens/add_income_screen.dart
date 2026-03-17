@@ -55,7 +55,9 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
       return;
     }
 
-    final amount = double.tryParse(_amountController.text.replaceAll(' ', ''));
+    final amount = double.tryParse(
+      _amountController.text.replaceAll(' ', '').replaceAll(',', '.').trim(),
+    );
     if (amount == null || amount <= 0) {
       _showError('To\'g\'ri summa kiriting');
       return;
@@ -63,39 +65,34 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
 
     setState(() => _isSaving = true);
 
-    final txn = TransactionModel(
-      type: 'kirim',
-      amount: amount,
-      accountTo: _selectedAccount!.id,
-      categoryId: _selectedCategory?.id,
-      note: _noteController.text.isEmpty ? null : _noteController.text,
-      date: AppUtils.dateString(_selectedDate),
-      createdAt: AppUtils.nowString(),
-    );
-
     try {
-      final success = await context.read<FinanceProvider>().addTransaction(txn);
+      final txn = TransactionModel(
+        type: 'kirim',
+        amount: amount,
+        accountTo: _selectedAccount!.id,
+        categoryId: _selectedCategory?.id,
+        note: _noteController.text.isEmpty ? null : _noteController.text,
+        date: AppUtils.dateString(_selectedDate),
+        createdAt: AppUtils.nowString(),
+      );
+
+      final success =
+          await context.read<FinanceProvider>().addTransaction(txn);
       setState(() => _isSaving = false);
 
-      if (!success && mounted) {
+      if (success && mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Xato: tranzaksiya saqlanmadi!'),
-            backgroundColor: Color(0xFFFF4757),
+            content: Text('Kirim saqlandi! ✓'),
+            backgroundColor: AppTheme.primaryGreen,
+            duration: Duration(seconds: 2),
           ),
         );
-        return;
       }
-
-      if (success && mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kirim saqlandi! ✓'),
-          backgroundColor: AppTheme.primaryGreen,
-          duration: Duration(seconds: 2),
-        ),
-      );
+    } catch (e) {
+      setState(() => _isSaving = false);
+      _showError('Xato: $e');
     }
   }
 
