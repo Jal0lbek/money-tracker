@@ -68,6 +68,7 @@ class FinanceProvider extends ChangeNotifier {
       await loadAll();
       return true;
     } catch (e) {
+      debugPrint('addTransaction xato: $e');
       return false;
     }
   }
