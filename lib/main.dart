@@ -1,3 +1,4 @@
+import 'utils/notification_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -24,8 +25,18 @@ void main() async {
     statusBarIconBrightness: Brightness.light,
   ));
 
+  // Notificationlarni ishga tushirish
+  await NotificationHelper.instance.initialize();
+
   // Takroriy to'lovlarni tekshirish
   await DatabaseHelper.instance.checkAndRunRecurrings();
+
+  // Bugungi eslatmalarni tekshirish
+  final db = DatabaseHelper.instance;
+  final reminders = await db.getTodayReminders();
+  await NotificationHelper.instance.checkAndSendTodayReminders(
+    reminders.map((r) => r.toMap()).toList(),
+  );
 
   runApp(
     MultiProvider(
