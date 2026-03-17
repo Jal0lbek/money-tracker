@@ -25,18 +25,24 @@ void main() async {
     statusBarIconBrightness: Brightness.light,
   ));
 
-  // Notificationlarni ishga tushirish
-  await NotificationHelper.instance.initialize();
+  // Notificationlarni ishga tushirish (xato bo'lsa ilova ishlashda davom etsin)
+  try {
+    await NotificationHelper.instance.initialize();
+  } catch (_) {}
 
   // Takroriy to'lovlarni tekshirish
-  await DatabaseHelper.instance.checkAndRunRecurrings();
+  try {
+    await DatabaseHelper.instance.checkAndRunRecurrings();
+  } catch (_) {}
 
   // Bugungi eslatmalarni tekshirish
-  final db = DatabaseHelper.instance;
-  final reminders = await db.getTodayReminders();
-  await NotificationHelper.instance.checkAndSendTodayReminders(
-    reminders.map((r) => r.toMap()).toList(),
-  );
+  try {
+    final db = DatabaseHelper.instance;
+    final reminders = await db.getTodayReminders();
+    await NotificationHelper.instance.checkAndSendTodayReminders(
+      reminders.map((r) => r.toMap()).toList(),
+    );
+  } catch (_) {}
 
   runApp(
     MultiProvider(
